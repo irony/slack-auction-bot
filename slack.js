@@ -1,58 +1,83 @@
 // Requiring our module
-var SlackBot = require('slackbotapi')
-var _ = require('highland')
+var slack = require('./lib/slackStream')
 
-// Starting
-var slack = new SlackBot({
-  'token': 'xoxb-19248986821-14YWpqfOZVeINoZ4ogJnLf1W',
-  'logging': false,
-  'autoReconnect': true
-})
+// manual deconstruction.. ;)
+var bids = slack.bids
+var auctions = slack.auctions
 
-var bidHelper = require('./lib/bids')(slack)
-var auctionHelper = require('./lib/auction')(slack)
-var responses = require('./lib/responses')
 
-// messages
+var startAuction = (auction) => {
+  auction.send(`Started auction on ${auction.item}.
+                              Start bidding with \`bid ${auction.bidInterval}\``)
+  return auction
+}
 
-var messages = _('message', slack)
+var handleAuction = (auction) => {
+  auction.rejectedBids = bids.fork().filter((bid) => bid.amount < auction.price)
+  auction.acceptedBids = bids.fork().filter((bid) => bid.amount > auction.price)
+  auction.acceptedBids.fork().pluck('amount').each((price) => auction.price = price)
+  return auction
+}
 
-// auctions
-var auctions = messages.fork()
-  .filter(auctionHelper.isAuction)
-  .map(auctionHelper.start)
+var informAuction = (auction) => {
+  auction.rejectedBids.fork()
+    .each((bid) => {
+      auction.send(`Bid not accepted. Current price is ${auction.price}${auction.currency}`)
+    })
 
-// bids
-var bids = messages.fork()
-  .filter(bids.isBid)
-  .map(bids.extractBid)
+  auction.acceptedBids.fork()
+    .each((bid) => {
+      auction.send(`New bid accepted for ${auction.item}.
+                              Highest bidder: ${bid.user.name}
+                              Bid: ${bid.amount}${auction.currency}
 
-// handle closing logic
-var finished = auctions.fork()
-  .map(bidHelper.countdown)
+                              To win the auction, bid at least \`bid ${bid.amount + auction.bidInterval }\` within ${auction.waitTime / 1000}s
+                              `)
+    })
+}
 
-var findAuction = (bid) => bid.auction = auctions.filter((a) => !a.winner).slice(-1)[0] && bid
-var validBid = (bid) => bid.amount > bid.auction.price
-var invalidBid = (bid) => !validBid(bid)
-var send = (message) => slack.sendMsg(auction.channel, message))
+var countdownAuction = (auction) => {
+  var countdownUser
+  var countdown = auction.acceptedBids.fork()
+    .debounce(auction.waitTime)
+    .map((bid) => {
+      countdownUser = bid.user
+      auction.send(`First announcement for ${auction.price}${auction.currency}`)
+      return bid
+    })
+    .debounce(auction.waitTime)
+    .map((bid) => {
+      if (countdownUser !== bid.user) countdown.destroy()
+      auction.send(`Second announcement for ${auction.price}${auction.currency}`)
+      return bid
+    })
+    .debounce(auction.waitTime)
+    .map((bid) => {
+      if (countdownUser !== bid.user) countdown.destroy()
+      auction.send(`Third announcement for ${auction.price}${auction.currency}`)
+      return bid
+    })
+    .debounce(auction.waitTime)
+    .map((bid) => {
+      bid.auction = auction
+      return bid
+    })
+  return countdown
+}
 
-// connect them
-var started = bids
-  .map(findAuction)
-  .map((bid) => {
-    var auction = bid.auction
-    auction.rejectedBids = auction.bids.fork().filter(invalidBid)
-    auction.acceptedBids = auction.bids.fork().filter(validBid)
-    auction.acceptedBids.fork().pluck('amount').each((price) => auction.price = price)
-    return auction
-  })
+var handleWinner = (bid) => {
+  bid.auction.send(`Auction ended! Winner is ${bid.user.name}`)
+  console.log('Send email to ', bid.user, 'for winning', bid.auction)
+}
 
-// messages
-started.fork()
-  .map((auction) => {
-    [responses.auctionStarted(auction),
-      auction.rejectedBids.fork().map(responses.bidRejected),
-      auction.acceptedBids.fork().map(responses.bidAccepted),
-      finished.fork().map(responses.finished)
-    ].flatten().each((message) => slack.sendMsg(auction.channel, message))
-  })
+var closeAuction = (bid) => {
+  bid.auction.winner = bid.user
+}
+
+auctions
+.map(startAuction)
+.map(handleAuction)
+.map(informAuction)
+.map(countdownAuction)
+.map(handleWinner)
+.map(closeAuction)
