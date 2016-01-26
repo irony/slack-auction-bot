@@ -4,12 +4,16 @@
   "description": "",
   "main": "slack.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "./node_modules/.bin/mocha tests/*",
+    "watch": "./node_modules/.bin/mocha tests/* -w"
   },
   "author": "",
   "license": "ISC",
   "dependencies": {
     "highland": "^2.6.0",
     "slackbotapi": "^1.3.7"
+  },
+  "devDependencies": {
+    "oboy": "^1.1.0"
   }
 }
