@@ -7,6 +7,7 @@ oboy((expect, sinon, proxyquire) => {
   var emitter
   var slackbotapi
   var slack
+  var token = 'bla'
 
   beforeEach((done) => {
     emitter = new EventEmitter()
@@ -16,7 +17,7 @@ oboy((expect, sinon, proxyquire) => {
 
     slack = proxyquire('../../lib/slackStream', {
       slackbotapi: slackbotapi
-    })
+    })(token)
     done()
   })
 
