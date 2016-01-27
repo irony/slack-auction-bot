@@ -1,9 +1,5 @@
 // Requiring our module
 var nconf = require('nconf').env().file('config.json')
-if (!nconf.get('SLACK_TOKEN')) {
-  throw new Error('SLACK_TOKEN is required')
-}
-
 var slack = require('./lib/slackStream')(nconf.get('SLACK_TOKEN'))
 
 slack.auctions

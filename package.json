@@ -4,6 +4,7 @@
   "description": "",
   "main": "slack.js",
   "scripts": {
+    "start": "node index.js",
     "test": "./node_modules/.bin/mocha tests/*",
     "watch": "./node_modules/.bin/mocha tests/* -w"
   },
